@@ -1,1 +1,536 @@
-.
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>App Folder Fixer</title>
+    <style>
+        :root {
+            --bg-color: #090a0f;         
+            --surface-color: #13151f;    
+            --card-color: #1b1e2b;       
+            --text-main: #f3f4f6;        
+            --text-muted: #858aa0;       
+            --accent-color: #dfbb6c;     
+            --accent-hover: #cfa856;
+            --border-color: #242838;     
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0; padding: 0;
+            display: flex; flex-direction: column;
+            height: 100vh;
+        }
+
+        .header {
+            background-color: var(--surface-color);
+            padding: 20px 16px;
+            border-bottom: 1px solid var(--border-color);
+            position: sticky; top: 0; z-index: 10;
+        }
+
+        .header-title-row {
+            display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 8px;
+        }
+
+        h2 { 
+            margin: 0; font-size: 1.35rem; font-weight: 700; letter-spacing: -0.02em; color: var(--text-main); 
+        }
+
+        .action-buttons { display: flex; gap: 8px; }
+
+        .btn {
+            padding: 10px 14px; border: none; border-radius: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all 0.2s ease;
+            white-space: nowrap;
+        }
+
+        .btn-outline { background: transparent; color: var(--text-muted); border: 1px solid var(--border-color); }
+        .btn-outline:active { background: rgba(255, 255, 255, 0.05); color: var(--text-main); }
+        .btn-primary { background: var(--accent-color); color: #000; }
+        .btn-primary:active { background: var(--accent-hover); }
+        .btn-run { background: transparent; color: var(--accent-color); border: 1px solid var(--accent-color); }
+        .btn-run:active { background: rgba(223, 187, 108, 0.1); }
+
+        .search-container { margin-top: 14px; width: 100%; }
+        .search-input {
+            width: 100%; padding: 12px 16px; background-color: var(--bg-color); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-main); font-size: 0.9rem; outline: none; transition: border-color 0.2s ease;
+        }
+        .search-input:focus { border-color: var(--accent-color); }
+
+        .app-list { flex: 1; overflow-y: auto; padding: 16px 12px; }
+        .app-item {
+            display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; background-color: var(--surface-color); margin-bottom: 10px; border-radius: 10px; border: 1px solid var(--border-color); transition: transform 0.1s ease, border-color 0.2s ease;
+        }
+        .app-item:active { background-color: var(--card-color); border-color: #3b415a; }
+        .app-details { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+        
+        .app-name {
+            font-size: 1.05rem; font-weight: 700; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-main); letter-spacing: -0.01em;
+        }
+
+        .app-codename {
+            font-size: 0.8rem; margin: 4px 0 0 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: 'Courier New', Courier, monospace;
+            color: #e5e7eb;
+            text-shadow: 0px 1px 2px rgba(0,0,0,0.5);
+        }
+
+        .checkbox-container {
+            position: relative; width: 22px; height: 22px; cursor: pointer; user-select: none; margin-left: 16px; flex-shrink: 0;
+        }
+        .checkbox-container input { position: absolute; opacity: 0; cursor: pointer; height: 0; width: 0; }
+        .checkmark {
+            position: absolute; top: 0; left: 0; height: 22px; width: 22px; background-color: var(--bg-color); border-radius: 6px; border: 2px solid var(--border-color); transition: all 0.2s ease;
+        }
+        .checkbox-container input:checked ~ .checkmark { background-color: var(--accent-color); border-color: var(--accent-color); }
+        .checkmark:after { content: ""; position: absolute; display: none; }
+        .checkbox-container input:checked ~ .checkmark:after { display: block; }
+        .checkbox-container .checkmark:after {
+            left: 6px; top: 2px; width: 5px; height: 10px; border: solid #000; border-width: 0 3px 3px 0; transform: rotate(45deg);
+        }
+
+        .debug-panel { margin-top: auto; border-top: 1px solid var(--border-color); background-color: #050608; display: flex; flex-direction: column; }
+        .debug-header { display: flex; justify-content: space-between; align-items: center; padding: 8px 16px; background: #0b0c12; border-bottom: 1px solid var(--border-color); }
+        .debug-title { font-size: 0.7rem; color: var(--text-muted); font-weight: 700; letter-spacing: 0.05em; }
+        .console-actions { display: flex; gap: 6px; }
+        
+        .btn-console {
+            background: transparent; border: 1px solid var(--border-color); color: var(--text-muted); border-radius: 4px; padding: 4px 10px; font-size: 0.65rem; font-weight: 600; cursor: pointer; transition: all 0.2s ease;
+        }
+        .btn-console:active { background: rgba(255, 255, 255, 0.05); color: var(--text-main); }
+        .btn-clear-logs:hover { border-color: #ef4444; color: #ef4444; }
+
+        #log-output {
+            display: none; padding: 12px 16px; font-family: monospace; font-size: 0.75rem; white-space: pre-wrap; max-height: 140px; overflow-y: auto; opacity: 0.9; border-top: 1px solid var(--border-color);
+        }
+        
+        .loading {
+            display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 60px 20px; color: var(--text-muted); font-size: 0.9rem;
+        }
+        .spinner {
+            width: 40px; height: 40px; border: 3px solid var(--border-color); border-top-color: var(--accent-color); border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 16px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <div class="header-title-row">
+            <h2>App Folder Fixer</h2>
+            <div class="action-buttons">
+                <button class="btn btn-outline" onclick="selectAll(true)">Select All</button>
+                <button class="btn btn-outline" onclick="selectAll(false)">Clear All</button>
+            </div>
+        </div>
+        
+        <div class="action-buttons" style="width: 100%; display: flex;">
+            <button class="btn btn-primary" style="flex: 1;" onclick="saveConfig(true)">Save Config</button>
+            <button class="btn btn-run" style="flex: 1;" onclick="runFixer()">Run Fixer</button>
+        </div>
+
+        <div class="search-container">
+            <input type="text" id="search-bar" class="search-input" placeholder="Search app name or package..." oninput="handleSearch()">
+        </div>
+    </div>
+
+    <div class="app-list" id="app-list">
+        <div class="loading">
+            <div class="spinner"></div>
+            <div>Searching for installed apps on your device...</div>
+        </div>
+    </div>
+
+    <div class="debug-panel">
+        <div class="debug-header">
+            <span class="debug-title">SYSTEM DIAGNOSTIC CONSOLE</span>
+            <div class="console-actions">
+                <button class="btn-console" id="toggle-log-btn" onclick="toggleLogVisibility()">Show Logs</button>
+                <button class="btn-console" onclick="copyLogs()">Copy Logs</button>
+                <button class="btn-console btn-clear-logs" onclick="clearLogs()">Clear</button>
+            </div>
+        </div>
+        <div id="log-output"></div>
+    </div>
+
+    <script>
+        const CONFIG_PATH = "/data/adb/modules/folder-fixer/folder_fixer.txt";
+        const MODULE_ID = "folder-fixer"; 
+
+        let userApps = [];
+        let appLabels = {}; 
+        let selectedPackages = new Set();
+        let searchQuery = "";
+
+        function log(msg, level = 'INFO') {
+            const logBox = document.getElementById('log-output');
+            if (!logBox) return;
+            const time = new Date().toLocaleTimeString();
+            
+            let color = "#a7f3d0"; 
+            if (level === 'ERROR') color = "#ef4444"; 
+            else if (level === 'WARN') color = "#fbbf24"; 
+            else if (level === 'SUCCESS') color = "#34d399"; 
+            
+            const span = document.createElement('span');
+            span.style.color = color;
+            span.style.display = 'block';
+            span.innerText = `[${time}] [${level}] ${msg}`;
+            
+            logBox.appendChild(span);
+            if (logBox.style.display === 'block') logBox.scrollTop = logBox.scrollHeight;
+        }
+
+        function clearLogs() { document.getElementById('log-output').innerHTML = ''; }
+
+        function toggleLogVisibility() {
+            const logBox = document.getElementById('log-output');
+            const btn = document.getElementById('toggle-log-btn');
+            if (logBox.style.display === 'block') {
+                logBox.style.display = 'none'; btn.innerText = 'Show Logs';
+            } else {
+                logBox.style.display = 'block'; btn.innerText = 'Hide Logs';
+                logBox.scrollTop = logBox.scrollHeight;
+            }
+        }
+
+        function copyLogs() {
+            const logBox = document.getElementById('log-output');
+            if (!logBox || !logBox.innerText) { ksu.toast("No logs available to copy."); return; }
+            navigator.clipboard.writeText(logBox.innerText)
+                .then(() => ksu.toast("Logs copied!"))
+                .catch(() => {
+                    const ta = document.createElement("textarea"); ta.value = logBox.innerText;
+                    document.body.appendChild(ta); ta.select(); document.execCommand('copy');
+                    document.body.removeChild(ta); ksu.toast("Logs copied!");
+                });
+        }
+
+        function handleSearch() {
+            const searchBar = document.getElementById('search-bar');
+            if (searchBar) { searchQuery = searchBar.value.toLowerCase().trim(); renderList(); }
+        }
+
+        function parsePackages(input) {
+            if (!input) return [];
+            if (Array.isArray(input)) {
+                return input.map(s => (s && typeof s === 'object') ? (s.packageName || s.id || JSON.stringify(s)) : String(s))
+                            .map(str => str.trim()).filter(Boolean);
+            }
+            if (typeof input !== 'string') return [];
+            let cleanInput = input.trim();
+            if (cleanInput.startsWith('[') && cleanInput.endsWith(']')) {
+                try { return parsePackages(JSON.parse(cleanInput)); } catch (e) {}
+            }
+            return cleanInput.split('\n').map(l => l.trim()).filter(l => l.length > 0)
+                             .map(l => l.startsWith('package:') ? l.replace('package:', '').trim() : l);
+        }
+
+        async function fetchAppLabels(packageList) {
+            if (!packageList || packageList.length === 0 || typeof ksu.getPackagesInfo !== 'function') return;
+            const chunkSize = 30;
+            for (let i = 0; i < packageList.length; i += chunkSize) {
+                const chunk = packageList.slice(i, i + chunkSize);
+                try {
+                    let res = await ksu.getPackagesInfo(JSON.stringify(chunk));
+                    let data = (typeof res === 'string') ? JSON.parse(res) : res;
+                    if (Array.isArray(data)) {
+                        data.forEach(item => {
+                            if (item) {
+                                let pkg = item.packageName || item.id;
+                                let label = item.appLabel || item.name;
+                                if (pkg && label) appLabels[pkg] = label;
+                            }
+                        });
+                    }
+                    renderList();
+                } catch (err) {}
+            }
+            log("Finished loading all readable app names.", "SUCCESS");
+        }
+
+        function getDisplayLabel(pkg) {
+            if (appLabels[pkg]) return appLabels[pkg];
+            const segments = pkg.split('.');
+            let last = segments[segments.length - 1];
+            if (last.toLowerCase() === 'android' && segments.length > 1) last = segments[segments.length - 2];
+            return last.charAt(0).toUpperCase() + last.slice(1);
+        }
+
+        async function loadApps(attempt = 1) {
+            clearLogs();
+            log(`Searching for installed apps on your device... (Attempt ${attempt} of 3)`, "INFO");
+            
+            if (typeof ksu === 'undefined') { 
+                log("Error: KernelSU or a compatible root manager was not detected. The app requires root access to function.", "ERROR"); 
+                return; 
+            }
+
+            const listDiv = document.getElementById('app-list');
+            if (listDiv) {
+                listDiv.innerHTML = `
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        <div>Loading installed apps... ${attempt > 1 ? `(Retry ${attempt - 1})` : ''}</div>
+                    </div>
+                `;
+            }
+
+            try {
+                let userLoaded = false;
+                userApps = [];
+                
+                log("Attempting to get app list using the primary root method...", "INFO");
+                if (typeof ksu.listPackages === 'function') {
+                    try {
+                        let res = await ksu.listPackages('user');
+                        userApps = parsePackages(res);
+                        if (userApps && userApps.length > 1) userLoaded = true;
+                    } catch (e) { 
+                        log("Primary method failed. Moving to alternative method...", "WARN"); 
+                    }
+                }
+
+                if (!userLoaded || userApps.length <= 1) {
+                    log("Attempting to get app list using the command-line fallback method...", "INFO");
+                    let res = await ksu.exec(`pm list packages -3`);
+                    let out = (typeof res === 'string') ? { success: true, stdout: res } : { success: res.errno === 0, stdout: res.stdout, stderr: res.stderr };
+                    if (out.success) {
+                        userApps = parsePackages(out.stdout);
+                        if (userApps && userApps.length > 1) userLoaded = true;
+                    } else {
+                        log(`Command-line fallback method failed: ${out.stderr}`, "ERROR");
+                    }
+                }
+
+                if (!userLoaded || userApps.length <= 1) {
+                    log("Strict visibility detected. Reading directly from /data/data filesystem...", "WARN");
+                    let res = await ksu.exec(`ls -1 /data/data 2>/dev/null`);
+                    let out = (typeof res === 'string') ? { success: true, stdout: res } : { success: res.errno === 0, stdout: res.stdout, stderr: res.stderr };
+                    if (out.success) {
+                        let rawApps = parsePackages(out.stdout);
+                        userApps = rawApps.filter(pkg => !pkg.startsWith('com.android.') && !pkg.startsWith('android.') && pkg !== 'android' && pkg.includes('.'));
+                        if (userApps && userApps.length > 1) userLoaded = true;
+                    } else {
+                        log(`Filesystem fallback method failed: ${out.stderr}`, "ERROR");
+                    }
+                }
+
+                if (!userLoaded || userApps.length <= 1) {
+                    if (attempt < 3) {
+                        log(`Could not find your apps. Waiting 2 seconds before trying again...`, "WARN");
+                        await new Promise(r => setTimeout(r, 2000));
+                        return loadApps(attempt + 1);
+                    }
+                }
+
+                log(`Successfully found ${userApps.length} installed apps.`, "SUCCESS");
+
+                if (userApps.length > 0) {
+                    log("Fetching readable names for the found apps...", "INFO");
+                    fetchAppLabels(userApps);
+                }
+                
+                log("Checking if you have previously saved any settings...", "INFO");
+                let configRes = await ksu.exec(`base64 -w 0 "${CONFIG_PATH}" 2>/dev/null`);
+                let configStdout = "";
+                let configOk = false;
+
+                if (typeof configRes === 'string') {
+                    configStdout = configRes;
+                    configOk = true;
+                } else if (configRes && typeof configRes === 'object') {
+                    configStdout = configRes.stdout || "";
+                    configOk = (configRes.errno === 0);
+                }
+                
+                selectedPackages.clear();
+                if (configOk && configStdout.trim().length > 0) {
+                    try {
+                        const b64 = configStdout.replace(/\s+/g, "");
+                        const binary = atob(b64);
+                        const content = decodeURIComponent(escape(binary));
+                        
+                        content.split('\n').forEach(line => {
+                            let t = line.trim(); 
+                            if (!t || t.startsWith('#')) return;
+                            let clean = t.startsWith('package:') ? t.replace('package:', '').trim() : t;
+                            if (clean.includes('.')) selectedPackages.add(clean);
+                        });
+                        log(`Found saved settings. Restored ${selectedPackages.size} previously selected apps.`, "SUCCESS");
+                    } catch (e) {
+                        log(`Error while trying to read your saved settings file: ${e}`, "ERROR");
+                    }
+                } else {
+                    log("No saved settings were found. Starting with a fresh list.", "INFO");
+                }
+                renderList();
+            } catch (err) { 
+                log(`An unexpected error occurred during the app loading process: ${err}`, "ERROR"); 
+                if (attempt < 3) {
+                    log("Retrying the process in 2 seconds...", "WARN");
+                    await new Promise(r => setTimeout(r, 2000));
+                    return loadApps(attempt + 1);
+                }
+            }
+        }
+
+        function selectAll(check) {
+            userApps.forEach(pkg => {
+                if (!searchQuery || getDisplayLabel(pkg).toLowerCase().includes(searchQuery) || pkg.toLowerCase().includes(searchQuery)) {
+                    if (check) selectedPackages.add(pkg); else selectedPackages.delete(pkg);
+                }
+            });
+            renderList();
+        }
+
+        function togglePackage(pkg) {
+            if (selectedPackages.has(pkg)) selectedPackages.delete(pkg); else selectedPackages.add(pkg);
+        }
+
+        function renderList() {
+            const listDiv = document.getElementById('app-list');
+            if (!listDiv) return;
+            listDiv.innerHTML = '';
+            
+            let filtered = userApps.filter(pkg => !searchQuery || getDisplayLabel(pkg).toLowerCase().includes(searchQuery) || pkg.toLowerCase().includes(searchQuery));
+            
+            filtered.sort((a, b) => {
+                const labelA = getDisplayLabel(a).toLowerCase();
+                const labelB = getDisplayLabel(b).toLowerCase();
+                return labelA.localeCompare(labelB, undefined, { numeric: true, sensitivity: 'base' });
+            });
+
+            if (filtered.length === 0) {
+                listDiv.innerHTML = `
+                    <div class="loading">
+                        <div style="margin-bottom: 14px;">No apps match your search.</div>
+                        <button class="btn btn-outline" onclick="clearSearchAndReload()">Reload App List</button>
+                    </div>
+                `;
+                return;
+            }
+
+            const frag = document.createDocumentFragment();
+            filtered.forEach(pkg => {
+                const item = document.createElement('div');
+                item.className = 'app-item';
+                item.onclick = function() {
+                    const cb = item.querySelector('input'); cb.checked = !cb.checked; togglePackage(pkg);
+                };
+                item.innerHTML = `
+                    <div class="app-details">
+                        <p class="app-name">${getDisplayLabel(pkg)}</p>
+                        <p class="app-codename">${pkg}</p>
+                    </div>
+                    <label class="checkbox-container" style="pointer-events: none;">
+                        <input type="checkbox" value="${pkg}" ${selectedPackages.has(pkg) ? 'checked' : ''}>
+                        <span class="checkmark"></span>
+                    </label>
+                `;
+                frag.appendChild(item);
+            });
+            listDiv.appendChild(frag);
+        }
+
+        async function clearSearchAndReload() {
+            const searchBar = document.getElementById('search-bar');
+            if (searchBar) searchBar.value = "";
+            searchQuery = "";
+            await loadApps();
+        }
+
+        async function saveConfig(showFeedback = true) {
+            if (typeof ksu === 'undefined') return false;
+            
+            if (showFeedback) log("Preparing to save your selected apps to a configuration file...", "INFO");
+            
+            let content = "# App Folder Fixer User Configuration\n" +
+                          "# Add package names below (one per line) that need folder fixes.\n" +
+                          "# Example:\n" +
+                          "# com.epicgames.portal\n" +
+                          "# com.activision.callofduty.shooter\n" +
+                          "# Remove '#' to enable an entry. Lines starting with '#' are treated as comments.\n\n";
+
+            Array.from(selectedPackages).sort().forEach(p => content += `${p}\n`);
+
+            try {
+                const b64 = btoa(unescape(encodeURIComponent(content)));
+                const cmd = `mkdir -p /data/adb/modules/folder-fixer && echo "${b64}" | base64 -d > "${CONFIG_PATH}" && chmod 666 "${CONFIG_PATH}"`;
+                let res = await ksu.exec(cmd);
+                
+                let ok = false;
+                if (typeof res === 'string') {
+                    ok = true;
+                } else if (res && typeof res === 'object') {
+                    ok = (res.errno === 0 || res.errno === undefined);
+                }
+
+                if (ok) {
+                    if (showFeedback) { 
+                        ksu.toast("Config Saved!"); 
+                        log("Successfully saved your selected apps to your device storage.", "SUCCESS"); 
+                    }
+                    return true;
+                }
+                log("Failed to write the selected apps to the file system. Check storage permissions.", "ERROR");
+                return false;
+            } catch (err) { 
+                log(`An error occurred while trying to save your settings: ${err}`, "ERROR"); 
+                return false; 
+            }
+        }
+
+        async function runFixer() {
+            if (typeof ksu === 'undefined') {
+                log("Cannot run the fixer: Root access is missing.", "ERROR");
+                return;
+            }
+            
+            log("Starting the folder fix process. Saving your current selections first...", "INFO");
+            
+            const saveOk = await saveConfig(false);
+            if (!saveOk) { 
+                log("Process stopped: Cannot continue because saving your selections failed.", "ERROR"); 
+                return; 
+            }
+
+            if (selectedPackages.size === 0) {
+                log("Process stopped: You have not selected any apps to fix.", "WARN");
+                ksu.toast("No apps selected!"); 
+                return;
+            }
+
+            log("Executing the background script to recreate missing folders for your selected apps...", "INFO");
+            try {
+                let res = await ksu.exec(`sh /data/adb/modules/${MODULE_ID}/action.sh`);
+                let out = (typeof res === 'string') ? { stdout: res, stderr: '' } : { stdout: res.stdout || '', stderr: res.stderr || '' };
+                
+                log("Script output follows below:", "INFO");
+                log(out.stdout, "INFO");
+                if (out.stderr) {
+                    log("Script errors reported: " + out.stderr, "WARN");
+                }
+                
+                log("The folder fix script has finished running completely!", "SUCCESS");
+                ksu.toast("Folder Check Complete!");
+            } catch (e) { 
+                log(`An unexpected system error occurred while running the script: ${e}`, "ERROR"); 
+            }
+        }
+
+        async function lifecycleInitializer() {
+            for (let i = 0; i < 20; i++) {
+                if (typeof ksu !== 'undefined') break;
+                await new Promise(r => setTimeout(r, 75));
+            }
+            loadApps();
+        }
+        window.onload = lifecycleInitializer;
+    </script>
+</body>
+</html>
