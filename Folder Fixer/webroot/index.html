@@ -56,10 +56,18 @@
         .btn-run { background: transparent; color: var(--accent-color); border: 1px solid var(--accent-color); }
         .btn-run:active { background: rgba(223, 187, 108, 0.1); }
 
-        .search-container { margin-top: 14px; width: 100%; }
-        .search-input {
-            width: 100%; padding: 12px 16px; background-color: var(--bg-color); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-main); font-size: 0.9rem; outline: none; transition: border-color 0.2s ease;
+        .search-container { 
+            margin-top: 14px; 
+            width: 100%; 
+            display: flex; 
+            gap: 8px; 
+            align-items: stretch; 
         }
+        
+        .search-input {
+            flex: 1; min-width: 0; padding: 12px 16px; background-color: var(--bg-color); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-main); font-size: 0.9rem; outline: none; transition: border-color 0.2s ease;
+        }
+        
         .search-input:focus { border-color: var(--accent-color); }
 
         .app-list { flex: 1; overflow-y: auto; padding: 16px 12px; }
@@ -134,6 +142,7 @@
         </div>
 
         <div class="search-container">
+            <button class="btn btn-outline" onclick="clearSearchAndReload()" title="Refresh installed apps list">🔄 Reload</button>
             <input type="text" id="search-bar" class="search-input" placeholder="Search app name or package..." oninput="handleSearch()">
         </div>
     </div>
