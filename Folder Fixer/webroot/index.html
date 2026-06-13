@@ -147,12 +147,7 @@
         </div>
     </div>
 
-    <div class="app-list" id="app-list">
-        <div class="loading">
-            <div class="spinner"></div>
-            <div>Searching for installed apps on your device...</div>
-        </div>
-    </div>
+    <div class="app-list" id="app-list"></div>
 
     <div class="debug-panel">
         <div class="debug-header">
@@ -221,13 +216,17 @@
 
         function copyLogs() {
             const logBox = document.getElementById('log-output');
-            if (!logBox || !logBox.innerText) { ksu.toast("No logs available to copy."); return; }
+            if (!logBox || !logBox.innerText) { 
+                if (typeof ksu !== 'undefined') ksu.toast("No logs available to copy."); 
+                return; 
+            }
             navigator.clipboard.writeText(logBox.innerText)
-                .then(() => ksu.toast("Logs copied!"))
+                .then(() => { if (typeof ksu !== 'undefined') ksu.toast("Logs copied!"); })
                 .catch(() => {
                     const ta = document.createElement("textarea"); ta.value = logBox.innerText;
                     document.body.appendChild(ta); ta.select(); document.execCommand('copy');
-                    document.body.removeChild(ta); ksu.toast("Logs copied!");
+                    document.body.removeChild(ta);
+                    if (typeof ksu !== 'undefined') ksu.toast("Logs copied!");
                 });
         }
 
@@ -236,17 +235,25 @@
             if (searchBar) { searchQuery = searchBar.value.toLowerCase().trim(); renderList(); }
         }
 
-        async function loadApps() {
-            clearLogs();
-            log("Searching for installed apps on your device...", "INFO");
-            
-            if (typeof ksu === 'undefined') { 
-                log("Error: KernelSU or a compatible root manager was not detected.", "ERROR"); 
-                return; 
+        const generateFallbackName = (pkg) => {
+            const parts = pkg.split('.');
+            let fallback = parts[parts.length - 1];
+            const ignoreList = ['android', 'app', 'mobile', 'id', 'com', 'native', 'lite', 'pro'];
+            if (ignoreList.includes(fallback.toLowerCase()) && parts.length > 1) {
+                fallback = parts[parts.length - 2];
+            }
+            return fallback.charAt(0).toUpperCase() + fallback.slice(1);
+        };
+
+        async function loadApps(retryCount = 0) {
+            if (retryCount === 0) {
+                clearLogs();
+                log("Searching for installed apps on your device...", "INFO");
             }
 
             const listDiv = document.getElementById('app-list');
-            if (listDiv) {
+            
+            if (listDiv && retryCount === 0) {
                 listDiv.innerHTML = `
                     <div class="loading">
                         <div class="spinner"></div>
@@ -255,67 +262,68 @@
                 `;
             }
 
-            await new Promise(resolve => setTimeout(resolve, 800));
-
             try {
+                if (typeof ksu === 'undefined') {
+                    throw new Error("KernelSU API missing. Make sure you are running this inside the KernelSU Manager.");
+                }
+
                 let pkgs = [];
-                
-                if (typeof ksu.listPackages === 'function') {
-                    try {
-                        const res = JSON.parse(ksu.listPackages('user'));
-                        if (Array.isArray(res) && res.length > 0) pkgs = res;
-                    } catch (e) {}
-                }
-                
-                if (pkgs.length === 0) {
-                    const {errno, stdout} = await ksuExec("pm list packages -3");
-                    if (errno === 0 && stdout.trim()) {
-                        pkgs = stdout.trim().split("\n").map(l => l.replace(/^package:/, "").trim()).filter(Boolean);
+                try {
+                    const rawPkgs = ksu.listPackages('user');
+                    if (rawPkgs) {
+                        pkgs = JSON.parse(rawPkgs);
                     }
+                } catch (e) {
+                    log("Failed to parse package list from KernelSU.", "ERROR");
                 }
 
-                if (pkgs.length === 0) {
-                    const {errno, stdout} = await ksuExec("find /data/app -maxdepth 3 -name base.apk 2>/dev/null | sed 's|/base.apk||;s|.*/||;s|-.*||' | sort -u");
-                    if (errno === 0 && stdout.trim()) {
-                        pkgs = stdout.trim().split("\n").filter(Boolean);
+                if (!pkgs || pkgs.length === 0) {
+                    if (retryCount < 2) {
+                        const delayMs = 2000;
+                        log(`No apps found. Retrying in ${delayMs / 1000} seconds... (Attempt ${retryCount + 1}/2)`, "WARN");
+                        
+                        if (listDiv) {
+                            listDiv.innerHTML = `
+                                <div class="loading">
+                                    <div class="spinner"></div>
+                                    <div>No apps found. Retrying... (Attempt ${retryCount + 1}/2)</div>
+                                </div>
+                            `;
+                        }
+                        
+                        await new Promise(r => setTimeout(r, delayMs));
+                        return await loadApps(retryCount + 1);
+                    } else {
+                        log("Could not find your apps after multiple attempts.", "ERROR");
+                        if (listDiv) listDiv.innerHTML = '<div class="loading">No apps found. Please check your system.</div>';
+                        return;
                     }
-                }
-
-                if (pkgs.length === 0) {
-                    log("Could not find your apps.", "ERROR");
-                    if (listDiv) listDiv.innerHTML = '<div class="loading">No apps found.</div>';
-                    return;
                 }
 
                 log(`Successfully found ${pkgs.length} installed apps.`, "SUCCESS");
                 log("Fetching readable names for the found apps...", "INFO");
 
-                await new Promise(resolve => setTimeout(resolve, 800));
-
-                userApps = [];
-
-                if (typeof ksu.getPackagesInfo === 'function') {
-                    try {
-                        const infoArr = JSON.parse(ksu.getPackagesInfo(JSON.stringify(pkgs)));
-                        userApps = pkgs.map((pkg, i) => ({
-                            packageName: pkg,
-                            appName: infoArr[i]?.appLabel || pkg
-                        }));
-                    } catch (e) {
-                        userApps = pkgs.map(pkg => ({ packageName: pkg, appName: pkg }));
-                    }
-                } else {
-                    userApps = pkgs.map(pkg => ({ packageName: pkg, appName: pkg }));
+                let infoArr = [];
+                try {
+                    infoArr = JSON.parse(ksu.getPackagesInfo(JSON.stringify(pkgs)));
+                } catch (e) {
+                    log("Failed to load App Labels, falling back to package names.", "WARN");
                 }
 
+                userApps = infoArr.map(info => {
+                    let cleanName = info.appLabel;
+                    if (!cleanName || cleanName === info.packageName) {
+                        cleanName = generateFallbackName(info.packageName);
+                    }
+                    return { packageName: info.packageName, appName: cleanName };
+                });
+
                 log("Checking if you have previously saved any settings...", "INFO");
-                
-                await new Promise(resolve => setTimeout(resolve, 800));
                 
                 const configRes = await ksuExec(`cat "${CONFIG_PATH}" 2>/dev/null`);
                 
                 selectedPackages.clear();
-                if (configRes.errno === 0 && configRes.stdout.trim().length > 0) {
+                if (configRes.errno === 0 && configRes.stdout && configRes.stdout.trim().length > 0) {
                     configRes.stdout.split("\n").forEach(line => {
                         let t = line.trim(); 
                         if (!t || t.startsWith('#')) return;
@@ -327,11 +335,10 @@
                     log("No saved settings were found. Starting with a fresh list.", "INFO");
                 }
                 
-                await new Promise(resolve => setTimeout(resolve, 500));
-                
                 renderList();
             } catch (err) { 
-                log(`An unexpected error occurred during the app loading process: ${err}`, "ERROR"); 
+                log(`An unexpected error occurred during the app loading process: ${err.message || err}`, "ERROR"); 
+                if (listDiv) listDiv.innerHTML = '<div class="loading">Error loading apps. Check logs.</div>';
             }
         }
 
@@ -416,6 +423,7 @@
             try {
                 const b64 = btoa(unescape(encodeURIComponent(content)));
                 const cmd = `mkdir -p /data/adb/modules/folder-fixer && echo "${b64}" | base64 -d > "${CONFIG_PATH}" && chmod 666 "${CONFIG_PATH}"`;
+                
                 const res = await ksuExec(cmd);
                 
                 if (res.errno === 0) {
@@ -438,7 +446,7 @@
                 log("Cannot run the fixer: Root access is missing.", "ERROR");
                 return;
             }
-            
+
             log("Starting the folder fix process. Saving your current selections first...", "INFO");
             
             const saveOk = await saveConfig(false);
