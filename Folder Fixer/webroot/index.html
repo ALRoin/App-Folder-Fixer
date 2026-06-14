@@ -161,27 +161,15 @@
         <div id="log-output"></div>
     </div>
 
-    <script>
+    <script type="module">
+        import { listPackages, getPackagesInfo, exec, toast } from './kernelsu.js';
+
         const CONFIG_PATH = "/data/adb/modules/folder-fixer/folder_fixer.txt";
         const MODULE_ID = "folder-fixer";
 
         let userApps = [];
         let selectedPackages = new Set();
         let searchQuery = "";
-
-        const ksuExec = (cmd) => new Promise((resolve) => {
-            if (typeof ksu === 'undefined' || !ksu.exec) {
-                resolve({ errno: 1, stdout: '', stderr: 'ksu unavailable' });
-                return;
-            }
-            const cb = `__cb_${Date.now()}_${Math.floor(Math.random() * 1e9)}`;
-            window[cb] = (errno, stdout, stderr) => {
-                delete window[cb];
-                resolve({ errno: Number(errno), stdout: stdout || '', stderr: stderr || '' });
-            };
-            try { ksu.exec(cmd, '{}', cb); }
-            catch (e) { delete window[cb]; resolve({ errno: 1, stdout: '', stderr: String(e) }); }
-        });
 
         function log(msg, level = 'INFO') {
             const logBox = document.getElementById('log-output');
@@ -217,16 +205,16 @@
         function copyLogs() {
             const logBox = document.getElementById('log-output');
             if (!logBox || !logBox.innerText) { 
-                if (typeof ksu !== 'undefined') ksu.toast("No logs available to copy."); 
+                toast("No logs available to copy."); 
                 return; 
             }
             navigator.clipboard.writeText(logBox.innerText)
-                .then(() => { if (typeof ksu !== 'undefined') ksu.toast("Logs copied!"); })
+                .then(() => { toast("Logs copied!"); })
                 .catch(() => {
                     const ta = document.createElement("textarea"); ta.value = logBox.innerText;
                     document.body.appendChild(ta); ta.select(); document.execCommand('copy');
                     document.body.removeChild(ta);
-                    if (typeof ksu !== 'undefined') ksu.toast("Logs copied!");
+                    toast("Logs copied!");
                 });
         }
 
@@ -269,12 +257,9 @@
 
                 let pkgs = [];
                 try {
-                    const rawPkgs = ksu.listPackages('user');
-                    if (rawPkgs) {
-                        pkgs = JSON.parse(rawPkgs);
-                    }
+                    pkgs = listPackages('user');
                 } catch (e) {
-                    log("Failed to parse package list from KernelSU.", "ERROR");
+                    log("Failed to get package list from KernelSU.", "ERROR");
                 }
 
                 if (!pkgs || pkgs.length === 0) {
@@ -305,7 +290,7 @@
 
                 let infoArr = [];
                 try {
-                    infoArr = JSON.parse(ksu.getPackagesInfo(JSON.stringify(pkgs)));
+                    infoArr = getPackagesInfo(pkgs);
                 } catch (e) {
                     log("Failed to load App Labels, falling back to package names.", "WARN");
                 }
@@ -320,7 +305,7 @@
 
                 log("Checking if you have previously saved any settings...", "INFO");
                 
-                const configRes = await ksuExec(`cat "${CONFIG_PATH}" 2>/dev/null`);
+                const configRes = await exec(`cat "${CONFIG_PATH}" 2>/dev/null`);
                 
                 selectedPackages.clear();
                 if (configRes.errno === 0 && configRes.stdout && configRes.stdout.trim().length > 0) {
@@ -424,11 +409,11 @@
                 const b64 = btoa(unescape(encodeURIComponent(content)));
                 const cmd = `mkdir -p /data/adb/modules/folder-fixer && echo "${b64}" | base64 -d > "${CONFIG_PATH}" && chmod 666 "${CONFIG_PATH}"`;
                 
-                const res = await ksuExec(cmd);
+                const res = await exec(cmd);
                 
                 if (res.errno === 0) {
                     if (showFeedback) { 
-                        ksu.toast("Config Saved!"); 
+                        toast("Config Saved!"); 
                         log("Successfully saved your selected apps to your device storage.", "SUCCESS"); 
                     }
                     return true;
@@ -457,13 +442,13 @@
 
             if (selectedPackages.size === 0) {
                 log("Process stopped: You have not selected any apps to fix.", "WARN");
-                ksu.toast("No apps selected!"); 
+                toast("No apps selected!"); 
                 return;
             }
 
             log("Executing the background script to recreate missing folders for your selected apps...", "INFO");
             try {
-                const res = await ksuExec(`sh /data/adb/modules/${MODULE_ID}/action.sh`);
+                const res = await exec(`sh /data/adb/modules/${MODULE_ID}/action.sh`);
                 
                 log("Script output follows below:", "INFO");
                 log(res.stdout || "No output", "INFO");
@@ -472,7 +457,7 @@
                 }
                 
                 log("The folder fix script has finished running completely!", "SUCCESS");
-                ksu.toast("Folder Check Complete!");
+                toast("Folder Check Complete!");
             } catch (e) { 
                 log(`An unexpected system error occurred while running the script: ${e}`, "ERROR"); 
             }
@@ -486,6 +471,16 @@
             loadApps();
         }
         
+        // Expose functions globally so HTML onclick attributes can access them
+        window.selectAll = selectAll;
+        window.saveConfig = saveConfig;
+        window.runFixer = runFixer;
+        window.clearSearchAndReload = clearSearchAndReload;
+        window.handleSearch = handleSearch;
+        window.toggleLogVisibility = toggleLogVisibility;
+        window.copyLogs = copyLogs;
+        window.clearLogs = clearLogs;
+
         window.onload = lifecycleInitializer;
     </script>
 </body>
