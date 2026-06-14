@@ -51,6 +51,10 @@
 
         .btn-outline { background: transparent; color: var(--text-muted); border: 1px solid var(--border-color); }
         .btn-outline:active { background: rgba(255, 255, 255, 0.05); color: var(--text-main); }
+        
+        .btn-gold { background: transparent; color: var(--accent-color); border: 1px solid var(--accent-color); }
+        .btn-gold:active { background: rgba(223, 187, 108, 0.1); }
+
         .btn-primary { background: var(--accent-color); color: #000; }
         .btn-primary:active { background: var(--accent-hover); }
         .btn-run { background: transparent; color: var(--accent-color); border: 1px solid var(--accent-color); }
@@ -73,6 +77,7 @@
         .app-list { flex: 1; overflow-y: auto; padding: 16px 12px; }
         .app-item {
             display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; background-color: var(--surface-color); margin-bottom: 10px; border-radius: 10px; border: 1px solid var(--border-color); transition: transform 0.1s ease, border-color 0.2s ease;
+            cursor: pointer;
         }
         .app-item:active { background-color: var(--card-color); border-color: #3b415a; }
         .app-details { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
@@ -92,7 +97,7 @@
         }
         .checkbox-container input { position: absolute; opacity: 0; cursor: pointer; height: 0; width: 0; }
         .checkmark {
-            position: absolute; top: 0; left: 0; height: 22px; width: 22px; background-color: var(--bg-color); border-radius: 6px; border: 2px solid var(--border-color); transition: all 0.2s ease;
+            position: absolute; top: 0; left: 0; height: 22px; width: 22px; background-color: var(--bg-color); border-radius: 6px; border: 2px solid var(--accent-color); transition: all 0.2s ease;
         }
         .checkbox-container input:checked ~ .checkmark { background-color: var(--accent-color); border-color: var(--accent-color); }
         .checkmark:after { content: ""; position: absolute; display: none; }
@@ -127,39 +132,39 @@
 </head>
 <body>
 
-    <div class="header">
+    <header class="header">
         <div class="header-title-row">
             <h2>App Folder Fixer</h2>
             <div class="action-buttons">
-                <button class="btn btn-outline" onclick="selectAll(true)">Select All</button>
-                <button class="btn btn-outline" onclick="selectAll(false)">Clear All</button>
+                <button class="btn btn-gold" id="btn-select-all">Select All</button>
+                <button class="btn btn-gold" id="btn-clear-all">Clear All</button>
             </div>
         </div>
         
         <div class="action-buttons" style="width: 100%; display: flex;">
-            <button class="btn btn-primary" style="flex: 1;" onclick="saveConfig(true)">Save Config</button>
-            <button class="btn btn-run" style="flex: 1;" onclick="runFixer()">Run Fixer</button>
+            <button class="btn btn-primary" id="btn-save-config" style="flex: 1;">Save Config</button>
+            <button class="btn btn-run" id="btn-run-fixer" style="flex: 1;">Run Fixer</button>
         </div>
 
         <div class="search-container">
-            <button class="btn btn-outline" onclick="clearSearchAndReload()">🔄 Reload</button>
-            <input type="text" id="search-bar" class="search-input" placeholder="Search app name or package..." oninput="handleSearch()">
+            <button class="btn btn-gold" id="btn-reload">🔄 Reload</button>
+            <input type="text" id="search-bar" class="search-input" placeholder="Search app name or package...">
         </div>
-    </div>
+    </header>
 
-    <div class="app-list" id="app-list"></div>
+    <main class="app-list" id="app-list"></main>
 
-    <div class="debug-panel">
+    <section class="debug-panel">
         <div class="debug-header">
             <span class="debug-title">SYSTEM DIAGNOSTIC CONSOLE</span>
             <div class="console-actions">
-                <button class="btn-console" id="toggle-log-btn" onclick="toggleLogVisibility()">Show Logs</button>
-                <button class="btn-console" onclick="copyLogs()">Copy Logs</button>
-                <button class="btn-console btn-clear-logs" onclick="clearLogs()">Clear</button>
+                <button class="btn-console" id="toggle-log-btn">Show Logs</button>
+                <button class="btn-console" id="btn-copy-logs">Copy Logs</button>
+                <button class="btn-console btn-clear-logs" id="btn-clear-logs">Clear</button>
             </div>
         </div>
         <div id="log-output"></div>
-    </div>
+    </section>
 
     <script type="module">
         import { listPackages, getPackagesInfo, exec, toast } from './kernelsu.js';
@@ -220,7 +225,10 @@
 
         function handleSearch() {
             const searchBar = document.getElementById('search-bar');
-            if (searchBar) { searchQuery = searchBar.value.toLowerCase().trim(); renderList(); }
+            if (searchBar) { 
+                searchQuery = searchBar.value.toLowerCase().trim(); 
+                renderList(); 
+            }
         }
 
         const generateFallbackName = (pkg) => {
@@ -233,15 +241,41 @@
             return fallback.charAt(0).toUpperCase() + fallback.slice(1);
         };
 
-        async function loadApps(retryCount = 0) {
-            if (retryCount === 0) {
-                clearLogs();
-                log("Searching for installed apps on your device...", "INFO");
-            }
+        async function waitForKernelSUCache() {
+            const maxAttempts = 35;
+            let lastLength = -1;
+            let consecutiveStableMatches = 0;
 
+            for (let i = 0; i < maxAttempts; i++) {
+                let currentPkgs = [];
+                try {
+                    currentPkgs = listPackages('user');
+                } catch (e) {}
+
+                if (currentPkgs && currentPkgs.length > 0) {
+                    if (currentPkgs.length === lastLength) {
+                        consecutiveStableMatches++;
+                        if (consecutiveStableMatches >= 2) {
+                            return currentPkgs;
+                        }
+                    } else {
+                        consecutiveStableMatches = 0;
+                        lastLength = currentPkgs.length;
+                    }
+                }
+                await new Promise(resolve => setTimeout(resolve, 300));
+            }
+            try {
+                return listPackages('user');
+            } catch (e) {
+                return [];
+            }
+        }
+
+        async function loadApps() {
+            clearLogs();
             const listDiv = document.getElementById('app-list');
-            
-            if (listDiv && retryCount === 0) {
+            if (listDiv) {
                 listDiv.innerHTML = `
                     <div class="loading">
                         <div class="spinner"></div>
@@ -255,45 +289,20 @@
                     throw new Error("KernelSU API missing. Make sure you are running this inside the KernelSU Manager.");
                 }
 
-                let pkgs = [];
-                try {
-                    pkgs = listPackages('user');
-                } catch (e) {
-                    log("Failed to get package list from KernelSU.", "ERROR");
-                }
+                let pkgs = await waitForKernelSUCache();
 
                 if (!pkgs || pkgs.length === 0) {
-                    if (retryCount < 2) {
-                        const delayMs = 2000;
-                        log(`No apps found. Retrying in ${delayMs / 1000} seconds... (Attempt ${retryCount + 1}/2)`, "WARN");
-                        
-                        if (listDiv) {
-                            listDiv.innerHTML = `
-                                <div class="loading">
-                                    <div class="spinner"></div>
-                                    <div>No apps found. Retrying... (Attempt ${retryCount + 1}/2)</div>
-                                </div>
-                            `;
-                        }
-                        
-                        await new Promise(r => setTimeout(r, delayMs));
-                        return await loadApps(retryCount + 1);
-                    } else {
-                        log("Could not find your apps after multiple attempts.", "ERROR");
-                        if (listDiv) listDiv.innerHTML = '<div class="loading">No apps found. Please check your system.</div>';
-                        return;
-                    }
+                    log("No apps found.", "ERROR");
+                    if (listDiv) listDiv.innerHTML = '<div class="loading">No apps found. Please check your system.</div>';
+                    return;
                 }
 
-                log(`Successfully found ${pkgs.length} installed apps.`, "SUCCESS");
-                log("Fetching readable names for the found apps...", "INFO");
+                log(`Loaded ${pkgs.length} apps.`, "SUCCESS");
 
                 let infoArr = [];
                 try {
                     infoArr = getPackagesInfo(pkgs);
-                } catch (e) {
-                    log("Failed to load App Labels, falling back to package names.", "WARN");
-                }
+                } catch (e) {}
 
                 userApps = infoArr.map(info => {
                     let cleanName = info.appLabel;
@@ -302,8 +311,6 @@
                     }
                     return { packageName: info.packageName, appName: cleanName };
                 });
-
-                log("Checking if you have previously saved any settings...", "INFO");
                 
                 const configRes = await exec(`cat "${CONFIG_PATH}" 2>/dev/null`);
                 
@@ -315,14 +322,12 @@
                         let clean = t.startsWith('package:') ? t.replace('package:', '').trim() : t;
                         if (clean.includes('.')) selectedPackages.add(clean);
                     });
-                    log(`Found saved settings. Restored ${selectedPackages.size} previously selected apps.`, "SUCCESS");
-                } else {
-                    log("No saved settings were found. Starting with a fresh list.", "INFO");
+                    log(`Restored ${selectedPackages.size} saved apps from configuration.`, "SUCCESS");
                 }
                 
                 renderList();
             } catch (err) { 
-                log(`An unexpected error occurred during the app loading process: ${err.message || err}`, "ERROR"); 
+                log(`Error loading apps: ${err.message || err}`, "ERROR"); 
                 if (listDiv) listDiv.innerHTML = '<div class="loading">Error loading apps. Check logs.</div>';
             }
         }
@@ -330,14 +335,23 @@
         function selectAll(check) {
             userApps.forEach(app => {
                 if (!searchQuery || app.appName.toLowerCase().includes(searchQuery) || app.packageName.toLowerCase().includes(searchQuery)) {
-                    if (check) selectedPackages.add(app.packageName); else selectedPackages.delete(app.packageName);
+                    if (check) {
+                        selectedPackages.add(app.packageName);
+                    } else {
+                        selectedPackages.delete(app.packageName);
+                    }
                 }
             });
             renderList();
         }
 
         function togglePackage(pkg) {
-            if (selectedPackages.has(pkg)) selectedPackages.delete(pkg); else selectedPackages.add(pkg);
+            if (selectedPackages.has(pkg)) {
+                selectedPackages.delete(pkg);
+            } else {
+                selectedPackages.add(pkg);
+            }
+            renderList();
         }
 
         function renderList() {
@@ -355,9 +369,10 @@
                 listDiv.innerHTML = `
                     <div class="loading">
                         <div style="margin-bottom: 14px;">No apps match your search.</div>
-                        <button class="btn btn-outline" onclick="clearSearchAndReload()">Reload App List</button>
+                        <button class="btn btn-gold" id="btn-empty-reload">Reload App List</button>
                     </div>
                 `;
+                document.getElementById('btn-empty-reload').addEventListener('click', clearSearchAndReload);
                 return;
             }
 
@@ -366,9 +381,7 @@
                 const pkg = app.packageName;
                 const item = document.createElement('div');
                 item.className = 'app-item';
-                item.onclick = function() {
-                    const cb = item.querySelector('input'); cb.checked = !cb.checked; togglePackage(pkg);
-                };
+                item.setAttribute('data-package-id', pkg);
                 item.innerHTML = `
                     <div class="app-details">
                         <p class="app-name">${app.appName}</p>
@@ -394,8 +407,6 @@
         async function saveConfig(showFeedback = true) {
             if (typeof ksu === 'undefined') return false;
             
-            if (showFeedback) log("Preparing to save your selected apps to a configuration file...", "INFO");
-            
             let content = "# App Folder Fixer User Configuration\n" +
                           "# Add package names below (one per line) that need folder fixes.\n" +
                           "# Example:\n" +
@@ -414,52 +425,51 @@
                 if (res.errno === 0) {
                     if (showFeedback) { 
                         toast("Config Saved!"); 
-                        log("Successfully saved your selected apps to your device storage.", "SUCCESS"); 
+                        log(`Configuration saved successfully (${selectedPackages.size} apps).`, "SUCCESS"); 
                     }
                     return true;
                 }
-                log("Failed to write the selected apps to the file system. Check storage permissions.", "ERROR");
+                log("Save failed. Check module write permissions.", "ERROR");
                 return false;
             } catch (err) { 
-                log(`An error occurred while trying to save your settings: ${err}`, "ERROR"); 
+                log(`Save error: ${err}`, "ERROR"); 
                 return false; 
             }
         }
 
         async function runFixer() {
             if (typeof ksu === 'undefined') {
-                log("Cannot run the fixer: Root access is missing.", "ERROR");
+                log("Fixer aborting: No root access detected.", "ERROR");
                 return;
             }
 
-            log("Starting the folder fix process. Saving your current selections first...", "INFO");
-            
             const saveOk = await saveConfig(false);
             if (!saveOk) { 
-                log("Process stopped: Cannot continue because saving your selections failed.", "ERROR"); 
+                log("Fixer aborting: Config save failed.", "ERROR"); 
                 return; 
             }
 
             if (selectedPackages.size === 0) {
-                log("Process stopped: You have not selected any apps to fix.", "WARN");
+                log("No apps selected.", "WARN");
                 toast("No apps selected!"); 
                 return;
             }
 
-            log("Executing the background script to recreate missing folders for your selected apps...", "INFO");
+            log(`Executing fixer script for ${selectedPackages.size} selected apps...`, "INFO");
             try {
                 const res = await exec(`sh /data/adb/modules/${MODULE_ID}/action.sh`);
                 
-                log("Script output follows below:", "INFO");
-                log(res.stdout || "No output", "INFO");
+                if (res.stdout) {
+                    log("Script response:\n" + res.stdout, "INFO");
+                }
                 if (res.stderr) {
-                    log("Script errors reported: " + res.stderr, "WARN");
+                    log("Script warnings/errors:\n" + res.stderr, "WARN");
                 }
                 
-                log("The folder fix script has finished running completely!", "SUCCESS");
+                log("Fixer script execution finished.", "SUCCESS");
                 toast("Folder Check Complete!");
             } catch (e) { 
-                log(`An unexpected system error occurred while running the script: ${e}`, "ERROR"); 
+                log(`Script runtime error: ${e}`, "ERROR"); 
             }
         }
 
@@ -471,17 +481,28 @@
             loadApps();
         }
         
-        // Expose functions globally so HTML onclick attributes can access them
-        window.selectAll = selectAll;
-        window.saveConfig = saveConfig;
-        window.runFixer = runFixer;
-        window.clearSearchAndReload = clearSearchAndReload;
-        window.handleSearch = handleSearch;
-        window.toggleLogVisibility = toggleLogVisibility;
-        window.copyLogs = copyLogs;
-        window.clearLogs = clearLogs;
+        document.getElementById('btn-select-all').addEventListener('click', () => selectAll(true));
+        document.getElementById('btn-clear-all').addEventListener('click', () => selectAll(false));
+        document.getElementById('btn-save-config').addEventListener('click', () => saveConfig(true));
+        document.getElementById('btn-run-fixer').addEventListener('click', runFixer);
+        document.getElementById('btn-reload').addEventListener('click', clearSearchAndReload);
+        document.getElementById('search-bar').addEventListener('input', handleSearch);
+        document.getElementById('toggle-log-btn').addEventListener('click', toggleLogVisibility);
+        document.getElementById('btn-copy-logs').addEventListener('click', copyLogs);
+        document.getElementById('btn-clear-logs').addEventListener('click', clearLogs);
 
-        window.onload = lifecycleInitializer;
+        document.getElementById('app-list').addEventListener('click', (e) => {
+            const targetItem = e.target.closest('.app-item');
+            if (!targetItem) return;
+            
+            const pkg = targetItem.getAttribute('data-package-id');
+            const checkbox = targetItem.querySelector('input[type="checkbox"]');
+            
+            checkbox.checked = !checkbox.checked;
+            togglePackage(pkg);
+        });
+
+        window.addEventListener('DOMContentLoaded', lifecycleInitializer);
     </script>
 </body>
 </html>
